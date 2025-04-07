@@ -1,4 +1,3 @@
-import time
 from langchain.document_loaders import UnstructuredFileLoader
 from langchain.embeddings import CacheBackedEmbeddings, OpenAIEmbeddings
 from langchain.storage import LocalFileStore
@@ -11,7 +10,8 @@ st.set_page_config(
     page_icon="📃",
 )
 
-
+# 파일이 달라질 경우에만 함수 실행
+@st.cache_data(show_spinner="Embedding file...")
 def embed_file(file):
     file_content = file.read()
     file_path = f"./.cache/files/{file.name}"
@@ -23,7 +23,7 @@ def embed_file(file):
         chunk_size=600,
         chunk_overlap=100,
     )
-    loader = UnstructuredFileLoader("./files/chapter_one.txt")
+    loader = UnstructuredFileLoader(file_path)
     docs = loader.load_and_split(text_splitter=splitter)
     embeddings = OpenAIEmbeddings()
     cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir)
@@ -32,6 +32,20 @@ def embed_file(file):
     return retriever
 
 
+def send_message(message, role, save=True):
+    with st.chat_message(role):
+        st.markdown(message)
+    if save:
+        st.session_state["messages"].append({"message": message, "role": role})
+
+def paint_history():
+    for message in st.session_state["messages"]:
+        send_message(
+            message["message"],
+            message["role"],
+            save=False,
+        )
+
 st.title("DocumentGPT")
 
 st.markdown(
@@ -39,15 +53,23 @@ st.markdown(
     Welcome!
 
     Use this chatbot to ask questions to an AI about your files!
+    
+    Upload your files on the sidebar.
     """
 )
 
-file = st.file_uploader(
-    "Upload a .txt .pdf or .docx file",
-    type=["pdf", "txt", "docx"],
-)
+with st.sidebar:
+    file = st.file_uploader(
+        "Upload a .txt .pdf or .docx file",
+        type=["pdf", "txt", "docx"],
+    )
 
 if file:
     retriever = embed_file(file)
-    s = retriever.invoke("winston")
-    s
+    send_message("I'm ready! Ask away!", "ai", save=False)
+    paint_history()
+    message = st.chat_input("Ask anything about your file...")
+    if message:
+        send_message(message, "human")
+else:
+    st.session_state["messages"] = []
