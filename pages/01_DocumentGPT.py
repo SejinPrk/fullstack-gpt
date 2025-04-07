@@ -1,4 +1,4 @@
-from langchain.chains.qa_with_sources.stuff_prompt import template
+from langchain.callbacks.base import BaseCallbackHandler
 from langchain.document_loaders import UnstructuredFileLoader
 from langchain.embeddings import CacheBackedEmbeddings, OpenAIEmbeddings
 from langchain.prompts import ChatPromptTemplate
@@ -8,15 +8,32 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
-from sympy.physics.units import temperature
 
 st.set_page_config(
     page_title="DocumentGPT",
     page_icon="📃",
 )
 
+class ChatCallbackHandler(BaseCallbackHandler):
+    message = ""
+
+    def on_llm_start(self, *args, **kwargs):
+        self.message_box = st.empty()
+
+    def on_llm_end(self, *args, **kwargs):
+        save_message(self.message, "ai")
+
+    def on_llm_new_token(self, token, *args, **kwargs):
+        self.message += token
+        self.message_box.markdown(self.message)
+
+
 llm = ChatOpenAI(
-    temperature = 0.1,
+    temperature=0.1,
+    streaming=True,
+    callbacks = [
+        ChatCallbackHandler(),
+    ]
 )
 
 # 파일이 달라질 경우에만 함수 실행
@@ -40,12 +57,14 @@ def embed_file(file):
     retriever = vectorstore.as_retriever()
     return retriever
 
+def save_message(message, role):
+    st.session_state["messages"].append({"message": message, "role": role})
 
 def send_message(message, role, save=True):
     with st.chat_message(role):
         st.markdown(message)
     if save:
-        st.session_state["messages"].append({"message": message, "role": role})
+        save_message(message, role)
 
 def paint_history():
     for message in st.session_state["messages"]:
@@ -102,7 +121,7 @@ if file:
             "context": retriever | RunnableLambda(format_docs),
             "question": RunnablePassthrough()
         } | prompt | llm
-        response = chain.invoke(message)
-        send_message(response.content, "ai")
+        with st.chat_message("ai"):
+            response = chain.invoke(message)
 else:
     st.session_state["messages"] = []
