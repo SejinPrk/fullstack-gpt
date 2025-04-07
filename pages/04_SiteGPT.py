@@ -1,3 +1,3 @@
 import streamlit as st
 
-st.title('SiteGPT')
+st.title('Sgit iteGPT')
