@@ -1,4 +1,29 @@
+# Python virtual environment
 venv/
 .env
+
+# IDE files
 .idea/
+
+# Cache files
 .cache/
+cache.db
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Streamlit
+.streamlit/
+.run/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
