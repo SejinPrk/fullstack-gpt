@@ -7,7 +7,20 @@ from langchain.storage import LocalFileStore
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
 from langchain.chat_models import ChatOpenAI
+from langchain.memory import ConversationBufferMemory
+from langchain.schema.messages import AIMessage, HumanMessage
 import streamlit as st
+
+# 세션 변수 초기화
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
+if "memory" not in st.session_state:
+    st.session_state["memory"] = ConversationBufferMemory(
+        return_messages=True,
+        memory_key="chat_history"
+    )
+
 
 # Streamlit 페이지 기본 설정
 st.set_page_config(
@@ -76,9 +89,25 @@ def embed_file(file):
     retriever = vectorstore.as_retriever()
     return retriever
 
+# 대화 기록을 포맷팅하는 함수
+def format_chat_history(chat_history):
+    formatted_history = ""
+    for message in chat_history:
+        if isinstance(message, HumanMessage):
+            formatted_history += f"Human: {message.content}\n"
+        elif isinstance(message, AIMessage):
+            formatted_history += f"AI: {message.content}\n"
+    return formatted_history
+
 # 메시지를 세션 상태에 저장하는 함수
 def save_message(message, role):
     st.session_state["messages"].append({"message": message, "role": role})
+
+    # 메모리에도 메시지 추가
+    if role == "human":
+        st.session_state["memory"].chat_memory.add_message(HumanMessage(content=message))
+    elif role == "ai":
+        st.session_state["memory"].chat_memory.add_message(AIMessage(content=message))
 
 # 메시지를 UI에 표시하고 필요시 저장하는 함수
 def send_message(message, role, save=True):
@@ -106,10 +135,13 @@ prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-            Answer the question using ONLY the following context. If you don't know the answer just say you don't know. 
-            Don't make anything up.
-            
+            Answer the question using ONLY the following context and chat history.
+            If you don't know the answer just say you don't know. Don't make anything up.
+
             Context: {context}
+
+            Chat History:
+            {chat_history}
             """
         ),
         ("human", "{question}")
@@ -161,17 +193,29 @@ if file:
         # 2. 프롬프트 템플릿 적용
         # 3. LLM으로 응답 생성
         chain = (
-            {
-                "context": retriever | RunnableLambda(format_docs), # 문서 검색 및 포맷팅
-                "question": RunnablePassthrough() # 원본 질문 그대로 전달
-            }
-            | prompt # 프롬프트 템플릿 적용
-            | llm # LLM으로 응답 생성
+                {
+                    "context": retriever | RunnableLambda(format_docs),  # 문서 검색 및 포맷팅
+                    "question": RunnablePassthrough(),  # 원본 질문 그대로 전달
+                    "chat_history": RunnableLambda(
+                        lambda _: format_chat_history(
+                            st.session_state.get("memory", ConversationBufferMemory(
+                                return_messages=True,
+                                memory_key="chat_history"
+                            )).chat_memory.messages
+                        )
+                    )
+                }
+                | prompt  # 프롬프트 템플릿 적용
+                | llm  # LLM으로 응답 생성
         )
 
         # AI 응답 메시지 UI 컴포넌트 생성 및 체인 실행
         with st.chat_message("ai"):
             chain.invoke(message) # 메시지를 입력으로 체인 실행
 else:
-    # 파일이 없는 경우 세션 초기화
-    st.session_state["messages"] = [] # 메시지 목록 초기화
+    # 파일이 없는 경우 메시지 및 메모리 초기화
+    st.session_state["messages"] = []
+    st.session_state["memory"] = ConversationBufferMemory(
+        return_messages=True,
+        memory_key="chat_history"
+    )
