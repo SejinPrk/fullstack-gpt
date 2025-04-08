@@ -47,16 +47,38 @@ class ChatCallbackHandler(BaseCallbackHandler):
         self.message_box.markdown(self.message)  # UI 업데이트
 
 
-# Ollama 모델 설정 - 스트리밍 활성화 및 콜백 핸들러 연결
-llm = ChatOllama(
-    model="mistral:latest",
-    temperature=0.1,  # 낮은 temperature로 일관된 응답 생성
-    streaming=True,  # 토큰 스트리밍 활성화
-    callbacks=[
-        ChatCallbackHandler(),  # 스트리밍 처리를 위한 콜백 핸들러 연결
-    ]
-)
+# 사이드바에 파일 업로더 및 LLM 선택 드롭다운 배치
+with st.sidebar:
+    file = st.file_uploader(
+        "Upload a .txt .pdf or .docx file",
+        type=["pdf", "txt", "docx"],  # 지원하는 파일 형식 지정
+    )
 
+    # 지원하는 LLM 모델 리스트
+    llm_model_name = st.selectbox(
+        "Select LLM model",
+        options=[
+            "mistral:latest",
+            "llama2-uncensored",
+            "falcon",
+            "nous-hermes"
+        ],
+        index=0  # 기본 선택: mistral
+    )
+
+# LLM 객체를 생성하는 함수
+def get_llm(model_name: str):
+    return ChatOllama(
+        model=model_name,
+        temperature=0.1,
+        streaming=True,
+        callbacks=[
+            ChatCallbackHandler(),
+        ]
+    )
+
+# Ollama 모델 설정 - 스트리밍 활성화 및 콜백 핸들러 연결
+llm = get_llm(llm_model_name)
 
 # 파일 임베딩 함수 - 캐싱 적용으로 성능 최적화 (파일이 달라질 경우에만 실행됨)
 @st.cache_data(show_spinner="Embedding file...")
@@ -165,12 +187,7 @@ st.markdown(
     """
 )
 
-# 사이드바에 파일 업로더 배치
-with st.sidebar:
-    file = st.file_uploader(
-        "Upload a .txt .pdf or .docx file",
-        type=["pdf", "txt", "docx"],  # 지원하는 파일 형식 지정
-    )
+
 
 # 파일이 업로드된 경우
 if file:
