@@ -1,12 +1,12 @@
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.document_loaders import UnstructuredFileLoader
-from langchain.embeddings import CacheBackedEmbeddings, OpenAIEmbeddings
+from langchain.embeddings import CacheBackedEmbeddings, OllamaEmbeddings
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
 from langchain.storage import LocalFileStore
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
-from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatOllama
 from langchain.memory import ConversationBufferMemory
 from langchain.schema.messages import AIMessage, HumanMessage
 import streamlit as st
@@ -47,8 +47,9 @@ class ChatCallbackHandler(BaseCallbackHandler):
         self.message_box.markdown(self.message)  # UI 업데이트
 
 
-# OpenAI 모델 설정 - 스트리밍 활성화 및 콜백 핸들러 연결
-llm = ChatOpenAI(
+# Ollama 모델 설정 - 스트리밍 활성화 및 콜백 핸들러 연결
+llm = ChatOllama(
+    model="mistral:latest",
     temperature=0.1,  # 낮은 temperature로 일관된 응답 생성
     streaming=True,  # 토큰 스트리밍 활성화
     callbacks=[
@@ -82,8 +83,10 @@ def embed_file(file):
     loader = UnstructuredFileLoader(file_path)
     docs = loader.load_and_split(text_splitter=splitter)
 
-    # OpenAI 임베딩 모델 설정 및 캐싱
-    embeddings = OpenAIEmbeddings()
+    # Ollama 임베딩 모델 설정 및 캐싱
+    embeddings = OllamaEmbeddings(
+        model="mistral:latest",
+    )
     cached_embeddings = CacheBackedEmbeddings.from_bytes_store(embeddings, cache_dir)
 
     # 벡터 저장소 생성 및 검색기 반환
@@ -138,26 +141,18 @@ def format_docs(docs):
 
 
 # LLM에 전달할 프롬프트 템플릿 정의
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
+prompt = ChatPromptTemplate.from_template(
             """
-            Answer the question using ONLY the following context and chat history.
+            Answer the question using ONLY the following context and not your training data.
             If you don't know the answer just say you don't know. Don't make anything up.
 
             Context: {context}
-
-            Chat History:
-            {chat_history}
+            Question: {question}
             """
-        ),
-        ("human", "{question}")
-    ]
 )
 
 # 앱 제목 설정
-st.title("DocumentGPT")
+st.title("PrivateGPT")
 
 # 앱 소개 메시지
 st.markdown(
