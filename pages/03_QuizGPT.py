@@ -1,13 +1,14 @@
+import json
+
 from langchain.document_loaders import UnstructuredFileLoader
 from langchain.text_splitter import CharacterTextSplitter
-import streamlit as st
-from langchain.retrievers import WikipediaRetriever
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.callbacks import StreamingStdOutCallbackHandler
-from langchain.schema import BaseOutputParser
+import streamlit as st
+from langchain.retrievers import WikipediaRetriever
+from langchain.schema import BaseOutputParser, output_parser
 
-import json
 
 class JsonOutputParser(BaseOutputParser):
     def parse(self, text):
@@ -35,38 +36,40 @@ llm = ChatOpenAI(
 def format_docs(docs):
     return "\n\n".join(document.page_content for document in docs)
 
-questions_prompt = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        """
-        You are a helpful assistant that is role playing as a teacher.
 
-        Based ONLY on the following context make 10 questions to test the user's knowledge about the text.
+questions_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """
+            You are a helpful assistant that is role playing as a teacher.
 
-        Each question should have 4 answers, three of them must be incorrect and one should be correct.
+            Based ONLY on the following context make 10 (TEN) questions minimum to test the user's knowledge about the text.
 
-        Use (o) to signal the corrext answer.
+            Each question should have 4 answers, three of them must be incorrect and one should be correct.
 
-        Question examples:
+            Use (o) to signal the correct answer.
 
-        Question 1: What is the color of the ocean?
-        Answers: Red | Yellow | Green | Blue(o)
+            Question examples:
 
-        Question 2: What is the capital of Georgia?
-        Answers: Baku | Tbilisi(o) | Manila | Beirut
+            Question: What is the color of the ocean?
+            Answers: Red|Yellow|Green|Blue(o)
 
-        Question 3: When was Avatar released? 
-        Answers: 2007 | 2001 | 2009(o) | 1998
+            Question: What is the capital or Georgia?
+            Answers: Baku|Tbilisi(o)|Manila|Beirut
 
-        Question 4: Who was Julius Caesar?
-        Answers: A Roman Emperor(o) | Painter | Actor | Model
+            Question: When was Avatar released?
+            Answers: 2007|2001|2009(o)|1998
 
-        Your turn!
+            Question: Who was Julius Caesar?
+            Answers: A Roman Emperor(o)|Painter|Actor|Model
 
-        Context: {context}
-        """,
-    )
-]
+            Your turn!
+
+            Context: {context}
+            """,
+        )
+    ]
 )
 
 questions_chain = { "context": format_docs } | questions_prompt | llm
@@ -187,8 +190,8 @@ formatting_prompt = ChatPromptTemplate.from_messages([
     Your turn!
 
     Questions: {context}
-
-""",
+    
+    """,
         )
     ]
 )
@@ -210,6 +213,17 @@ def split_file(file):
     docs = loader.load_and_split(text_splitter=splitter)
     return docs
 
+@st.cache_data(show_spinner="Making quiz...")
+def run_quiz_chain(_docs, topic):
+    chain = {"context": questions_chain} | formatting_chain | output_parser
+    return chain.invoke(_docs)
+
+@st.cache_data(show_spinner="Searching Wikipedia...")
+def wiki_search(term):
+    retriever = WikipediaRetriever(top_k_results=5)
+    docs = retriever.get_relevant_documents(term)
+    return docs
+
 with st.sidebar:
     docs = None # 변수 선언
     choice = st.selectbox(
@@ -229,9 +243,7 @@ with st.sidebar:
     else:
         topic = st.text_input("Search Wikipedia...")
         if topic:
-            retriever = WikipediaRetriever(top_k_results=5)
-            with st.status("Searching Wikipedia..."):
-                docs = retriever.get_relevant_documents(topic)
+            docs = wiki_search(topic)
 
 if not docs:
     st.markdown(
@@ -248,6 +260,5 @@ else:
     start = st.button("Generate Quiz")
 
     if start:
-        chain = {"context": questions_chain} | formatting_chain | output_parser
-        response = chain.invoke(docs)
+        response = run_quiz_chain(docs, topic if topic else file.name)
         st.write(response)
