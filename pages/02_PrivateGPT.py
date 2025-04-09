@@ -24,7 +24,7 @@ if "memory" not in st.session_state:
 # Streamlit 페이지 기본 설정
 st.set_page_config(
     page_title="PrivateGPT",
-    page_icon="📃",
+    page_icon="🤐",
 )
 
 
