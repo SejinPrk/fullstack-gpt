@@ -1,19 +1,19 @@
 from langchain.document_loaders import SitemapLoader
-from langchain.schema.runnable import RunnableLambda
-from langchain.document_transformers import Html2TextTransformer
+from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
-from langchain.chat_models import ChatOpenAI
 from langchain.embeddings import OpenAIEmbeddings
+from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 import streamlit as st
 
 llm = ChatOpenAI(
-  temperature=0.1,
-) 
+    temperature=0.1,
+)
 
-answers_prompt = ChatPromptTemplate.from_template("""
-Using ONLY the following context answer the user's question. If you can't just say you don't know, don't make anything up.
+answers_prompt = ChatPromptTemplate.from_template(
+    """
+    Using ONLY the following context answer the user's question. If you can't just say you don't know, don't make anything up.
                                                   
     Then, give a score to the answer between 0 and 5.
 
@@ -36,33 +36,34 @@ Using ONLY the following context answer the user's question. If you can't just s
     Your turn!
 
     Question: {question}
-  """
+"""
 )
 
+
 def get_answers(inputs):
-  docs = inputs["docs"]
-  question = inputs["question"]
-  answers_chain = answers_prompt | llm
-  # answers = []
-  # for doc in docs:
-  #   result = answers_chain.invoke({
-  #     "context": doc.page_content,
-  #     "question": question
-  #   })
-  #   answers.append(result.content)
-  return {
-    "question": question,
-    "answers":[
-    {
-      "answer": answers_chain.invoke(
-        { "question": question, "context": doc.page_content }
-      ).content,
-      "source": doc.metadata["source"],
-      "date": doc.metadata["lastmod"],
-    } 
-    for doc in docs
-    ]
-  }
+    docs = inputs["docs"]
+    question = inputs["question"]
+    answers_chain = answers_prompt | llm
+    # answers = []
+    # for doc in docs:
+    #     result = answers_chain.invoke(
+    #         {"question": question, "context": doc.page_content}
+    #     )
+    #     answers.append(result.content)
+    return {
+        "question": question,
+        "answers": [
+            {
+                "answer": answers_chain.invoke(
+                    {"question": question, "context": doc.page_content}
+                ).content,
+                "source": doc.metadata["source"],
+                "date": doc.metadata.get("lastmod", "날짜 없음")
+            }
+            for doc in docs
+        ],
+    }
+
 
 choose_prompt = ChatPromptTemplate.from_messages(
     [
@@ -82,54 +83,59 @@ choose_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
+
 def choose_answer(inputs):
-  answers = inputs["answers"]
-  question = inputs["question"]
-  choose_chain = choose_prompt | llm
-  condensed = "\n\n".join(f"Answer: {answer['answer']}\nSource: {answer['source']}\nDate: {answer['date']}\n\n" for answer in answers)
-  for answer in answers:
-    condensed += f"Answer: {answer['answer']}\nSource: {answer['source']}\nDate: {answer['date']}\n\n"
-  st.write(condensed)
-  choose_chain.invoke({
-    "question": question,
-    "answer": condensed
-  })
+    answers = inputs["answers"]
+    question = inputs["question"]
+    choose_chain = choose_prompt | llm
+    condensed = "\n\n".join(
+        f"{answer['answer']}\nSource:{answer['source']}\nDate:{answer['date']}\n"
+        for answer in answers
+    )
+    return choose_chain.invoke(
+        {
+            "question": question,
+            "answers": condensed,
+        }
+    )
+
 
 def parse_page(soup):
-  header = soup.find("header")
-  footer = soup.find("footer")
-  if header:
-    header.decompose()
-  if footer:
-    footer.decompose()
-  return (
-    str(soup.get_text())
-    .replace("\n", " ")
-    .replace("\xa0", " ")
-    .replace("CloseSearch Submit Blog", " ")
-  )
+    header = soup.find("header")
+    footer = soup.find("footer")
+    if header:
+        header.decompose()
+    if footer:
+        footer.decompose()
+    return (
+        str(soup.get_text())
+        .replace("\n", " ")
+        .replace("\xa0", " ")
+        .replace("CloseSearch Submit Blog", "")
+    )
+
 
 @st.cache_resource(show_spinner="Loading website...")
 def load_website(url):
     splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-      chunk_size=1000,
-      chunk_overlap=200,
+        chunk_size=1000,
+        chunk_overlap=200,
     )
     loader = SitemapLoader(
-      url,
-      parsing_function = parse_page,
-      )
-    loader.requests_per_second = 5
-    docs = loader.load_and_split(text_splitter=splitter) 
+        url,
+        parsing_function=parse_page,
+    )
+    loader.requests_per_second = 2
+    docs = loader.load_and_split(text_splitter=splitter)
     vector_store = FAISS.from_documents(docs, OpenAIEmbeddings())
     return vector_store.as_retriever()
 
+
 st.set_page_config(
-  page_title="SiteGPT",
-  page_icon="🌐",
+    page_title="SiteGPT",
+    page_icon="🖥️",
 )
 
-html2text_transformer = Html2TextTransformer()
 
 st.markdown(
     """
@@ -141,32 +147,29 @@ st.markdown(
 """
 )
 
+
 with st.sidebar:
-  url = st.text_input(
-    "Write down a URL",
-    placeholder="https://example.com"
-  )
+    url = st.text_input(
+        "Write down a URL",
+        placeholder="https://example.com",
+    )
+
 
 if url:
-  # async chromium loader
-  # loader = AsyncChromiumLoader([url])
-  # docs = loader.load()
-  # transformed = html2text_transformer.transform_documents(docs)
-  # st.write(docs)
-
-  # sync sitemap loader
-  if ".xml" not in url:
-    with st.sidebar:
-      st.error("Please write down a Sitemap URL")
-  else:
-    retriever = load_website(url)
-    query = st.text_input("Ask a question to the website")
-    if query:
-      chain = {
-        "docs": retriever,
-        "question": RunnableLambda(lambda x: x),
-      }| RunnableLambda(get_answers) | RunnableLambda(choose_answer)
-
-    result = chain.invoke(query)
-    st.write(result.content)
-    
+    if ".xml" not in url:
+        with st.sidebar:
+            st.error("Please write down a Sitemap URL.")
+    else:
+        retriever = load_website(url)
+        query = st.text_input("Ask a question to the website.")
+        if query:
+            chain = (
+                {
+                    "docs": retriever,
+                    "question": RunnablePassthrough(),
+                }
+                | RunnableLambda(get_answers)
+                | RunnableLambda(choose_answer)
+            )
+            result = chain.invoke(query)
+            st.markdown(result.content.replace("$", "\$"))

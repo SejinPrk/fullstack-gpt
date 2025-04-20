@@ -18,7 +18,7 @@ st.markdown(
     - [x] [DocumentGPT](/DocumentGPT)
     - [x] [PrivateGPT](/PrivateGPT)
     - [x] [QuizGPT](/QuizGPT)
-    - [ ] [SiteGPT](/SiteGPT)
+    - [x] [SiteGPT](/SiteGPT)
     - [ ] [MeetingGPT](/MeetingGPT)
     - [ ] [InvestorGPT](/InvestorGPT)
     """
