@@ -133,4 +133,4 @@ company = st.text_input("Write down the name of a company that you are intereste
 
 if company: 
     result = agent.invoke(company)
-    st.write(result["output"])
+    st.write(result["output"].replace("$", "\$"))
