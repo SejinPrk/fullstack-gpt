@@ -44,6 +44,7 @@ user_token_db = {
 @app.get(
     "/authorize",
     response_class=HTMLResponse,
+    include_in_schema=False,
 )
 def handle_authorize(
         client_id:str,
@@ -62,7 +63,10 @@ def handle_authorize(
     </html>
     """
 
-@app.post("/token")
+@app.post(
+    "/token",
+    include_in_schema=False,
+)
 def handle_token(code = Form(...)):
     return {
         "access_token": user_token_db[code],
