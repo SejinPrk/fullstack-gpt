@@ -16,7 +16,7 @@ __pycache__/
 .ipynb_checkpoints
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 .run/
 
 # OS specific files
